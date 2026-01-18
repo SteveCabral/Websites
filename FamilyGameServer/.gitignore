@@ -1,0 +1,16 @@
+# Build output directories (build artifacts, not needed in source control)
+bin/
+obj/
+
+# Published/Deployment artifacts (generated during build/publish, not needed in source control)
+publish/
+out/
+
+# User-specific files
+.vs/
+.vscode/
+
+# Build results
+*.dll
+*.exe
+*.pdb

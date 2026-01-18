@@ -9,10 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Allow running as a Windows Service (e.g., on a dedicated LAN machine).
 builder.Host.UseWindowsService();
 
-// Configure the server to listen on 192.168.1.208:5000
+// Configure the server to listen on all interfaces on port 5000
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    serverOptions.Listen(System.Net.IPAddress.Parse("192.168.1.208"), 5000);
+    serverOptions.ListenAnyIP(5000);
 });
 
 // Add services to the container.
