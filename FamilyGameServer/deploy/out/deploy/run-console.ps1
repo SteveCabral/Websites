@@ -1,6 +1,6 @@
 param(
   [string]$AppDir = ".\\out",
-  [string]$Urls = "http://0.0.0.0:5000"
+  [string]$Urls = "http://192.168.1.208:5000"
 )
 
 $ErrorActionPreference = "Stop"
