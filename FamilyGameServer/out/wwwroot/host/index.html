@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FamilyGameServer - Host</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>Host Console</h1>
+        <div class="small">Kahoot-style sample game (SignalR)</div>
+      </div>
+      <div class="pill">Hub: <span class="mono">/gameHub</span></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div class="small">Room code</div>
+          <div style="font-size:34px; font-weight:800; letter-spacing:3px;" class="mono" id="roomCode">----</div>
+          <div class="small" id="joinHint">Players join at <span class="mono" id="joinUrl">/play</span></div>
+        </div>
+        <div class="row">
+          <button id="btnNewRoom">New Room</button>
+          <button id="btnStart" disabled>Start</button>
+          <button id="btnReveal" disabled>Reveal</button>
+          <button id="btnNext" disabled>Next</button>
+          <button id="btnEnd" disabled>End Room</button>
+        </div>
+      </div>
+
+      <hr />
+
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div class="small">Question</div>
+          <div id="qMeta" class="pill">Not started</div>
+        </div>
+        <div id="status" class="status">Connecting…</div>
+      </div>
+
+      <div style="margin-top:10px; font-size:18px; font-weight:650;" id="qText">Create a room to begin.</div>
+
+      <div class="grid" style="margin-top:12px;" id="choices"></div>
+
+      <hr />
+      <div class="small" style="margin-bottom:8px;">Players</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:60px;">#</th>
+            <th>Name</th>
+            <th style="width:110px;">Score</th>
+            <th style="width:110px;">Answered</th>
+          </tr>
+        </thead>
+        <tbody id="scoreboardBody"></tbody>
+      </table>
+
+      <div class="small footer-links" style="margin-top:10px;">
+        Tip: open <a href="/play" target="_blank" rel="noopener">/play</a> on a phone and join with the room code.
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+  <script type="module">
+    import { qs, setText, renderScoreboard } from '/shared.js';
+
+    const roomCodeEl = qs('#roomCode');
+    const joinUrlEl = qs('#joinUrl');
+    const statusEl = qs('#status');
+    const qMetaEl = qs('#qMeta');
+    const qTextEl = qs('#qText');
+    const choicesEl = qs('#choices');
+    const scoreboardBody = qs('#scoreboardBody');
+
+    const btnNewRoom = qs('#btnNewRoom');
+    const btnStart = qs('#btnStart');
+    const btnReveal = qs('#btnReveal');
+    const btnNext = qs('#btnNext');
+    const btnEnd = qs('#btnEnd');
+
+    let roomCode = null;
+    let lastQuestion = null;
+    let revealed = false;
+
+    function setStatus(text, cls){
+      statusEl.className = 'status' + (cls ? ' ' + cls : '');
+      setText(statusEl, text);
+    }
+
+    function setButtons(){
+      const hasRoom = !!roomCode;
+      btnStart.disabled = !hasRoom;
+      btnReveal.disabled = !hasRoom || !lastQuestion;
+      btnNext.disabled = !hasRoom || !lastQuestion;
+      btnEnd.disabled = !hasRoom;
+    }
+
+    function renderChoices(question, correctIndex = null){
+      choicesEl.innerHTML = '';
+      if (!question) return;
+      const choices = question.choices ?? question.Choices ?? [];
+      for (let i = 0; i < choices.length; i++){
+        const b = document.createElement('button');
+        b.className = 'choice';
+        b.disabled = true;
+        b.textContent = choices[i];
+        if (correctIndex !== null){
+          if (i === correctIndex) b.classList.add('good');
+          else b.classList.add('bad');
+        }
+        choicesEl.appendChild(b);
+      }
+    }
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('/gameHub')
+      .withAutomaticReconnect()
+      .build();
+
+    connection.onreconnecting(() => setStatus('Reconnecting…', 'warn'));
+    connection.onreconnected(() => setStatus('Connected', 'good'));
+    connection.onclose(() => setStatus('Disconnected', 'bad'));
+
+    connection.on('RoomCreated', (code) => {
+      roomCode = code;
+      setText(roomCodeEl, code);
+      joinUrlEl.textContent = `${location.origin}/play`;
+      setStatus('Room ready', 'good');
+      lastQuestion = null;
+      revealed = false;
+      setText(qMetaEl, 'Not started');
+      setText(qTextEl, 'Waiting to start…');
+      choicesEl.innerHTML = '';
+      renderScoreboard(scoreboardBody, []);
+      setButtons();
+    });
+
+    connection.on('PlayerListUpdated', (scoreboard) => {
+      renderScoreboard(scoreboardBody, scoreboard);
+    });
+
+    connection.on('QuestionStarted', (q) => {
+      lastQuestion = q;
+      revealed = false;
+      const qNum = q.questionNumber ?? q.QuestionNumber;
+      const total = q.totalQuestions ?? q.TotalQuestions;
+      const ttl = q.timeLimitSeconds ?? q.TimeLimitSeconds;
+      setText(qMetaEl, `Question ${qNum} / ${total}  •  ${ttl}s`);
+      setText(qTextEl, q.text ?? q.Text);
+      renderChoices(q, null);
+      setStatus('Question running', 'warn');
+      setButtons();
+    });
+
+    connection.on('RoundEnded', (data) => {
+      const correct = data.correctIndex ?? data.CorrectIndex;
+      const sb = data.scoreboard ?? data.Scoreboard;
+      revealed = true;
+      renderChoices(lastQuestion, correct);
+      renderScoreboard(scoreboardBody, sb);
+      setStatus('Revealed', 'good');
+      setButtons();
+    });
+
+    connection.on('GameEnded', (data) => {
+      const sb = data.scoreboard ?? data.Scoreboard;
+      renderScoreboard(scoreboardBody, sb);
+      setText(qMetaEl, 'Game ended');
+      setText(qTextEl, 'Game over. Create a new room to play again.');
+      choicesEl.innerHTML = '';
+      lastQuestion = null;
+      roomCode = null;
+      setText(roomCodeEl, '----');
+      setStatus('Done', 'good');
+      setButtons();
+    });
+
+    async function createRoom(){
+      setStatus('Creating room…', 'warn');
+      await connection.invoke('CreateRoom');
+    }
+
+    btnNewRoom.addEventListener('click', async () => {
+      try { await createRoom(); } catch(e){ setStatus(String(e), 'bad'); }
+    });
+
+    btnStart.addEventListener('click', async () => {
+      try {
+        if (!roomCode) return;
+        setStatus('Starting…', 'warn');
+        const res = await connection.invoke('StartGame', roomCode);
+        if (!res?.ok) setStatus(res?.error ?? 'Unable to start', 'bad');
+      } catch(e){ setStatus(String(e), 'bad'); }
+    });
+
+    btnReveal.addEventListener('click', async () => {
+      try {
+        if (!roomCode) return;
+        const res = await connection.invoke('RevealAnswers', roomCode);
+        if (!res?.ok) setStatus(res?.error ?? 'Unable to reveal', 'bad');
+      } catch(e){ setStatus(String(e), 'bad'); }
+    });
+
+    btnNext.addEventListener('click', async () => {
+      try {
+        if (!roomCode) return;
+        const res = await connection.invoke('NextQuestion', roomCode);
+        if (!res?.ok) setStatus(res?.error ?? 'Unable to advance', 'bad');
+      } catch(e){ setStatus(String(e), 'bad'); }
+    });
+
+    btnEnd.addEventListener('click', async () => {
+      try {
+        if (!roomCode) return;
+        await connection.invoke('EndRoom', roomCode);
+      } catch(e){ setStatus(String(e), 'bad'); }
+    });
+
+    (async () => {
+      try {
+        await connection.start();
+        setStatus('Connected', 'good');
+        await createRoom();
+      } catch (e) {
+        setStatus('Failed to connect: ' + e, 'bad');
+      }
+    })();
+  </script>
+</body>
+</html>

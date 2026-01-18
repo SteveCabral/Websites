@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FamilyGameServer - Play</title>
+  <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>Join Game</h1>
+        <div class="small">Enter the room code and your name</div>
+      </div>
+      <div class="pill">Mobile friendly</div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div id="joinPanel">
+        <div class="row">
+          <input id="roomCode" placeholder="Room code (e.g., A1B2)" autocomplete="off" inputmode="latin" />
+          <input id="playerName" placeholder="Your name" autocomplete="name" />
+          <button id="btnJoin">Join</button>
+        </div>
+        <div id="joinStatus" class="status" style="margin-top:10px;">Connecting…</div>
+      </div>
+
+      <div id="gamePanel" style="display:none;">
+        <div class="row" style="justify-content:space-between;">
+          <div>
+            <div class="small">Room</div>
+            <div class="pill mono" id="roomLabel">----</div>
+          </div>
+          <div id="status" class="status">Waiting…</div>
+        </div>
+
+        <hr />
+
+        <div class="row" style="justify-content:space-between;">
+          <div>
+            <div class="small">Question</div>
+            <div id="qMeta" class="pill">Not started</div>
+          </div>
+          <div class="pill">You: <span class="mono" id="nameLabel"></span></div>
+        </div>
+
+        <div style="margin-top:10px; font-size:18px; font-weight:650;" id="qText">Waiting for the host…</div>
+        <div class="grid" style="margin-top:12px;" id="choices"></div>
+
+        <hr />
+        <div class="small" style="margin-bottom:8px;">Leaderboard</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:60px;">#</th>
+              <th>Name</th>
+              <th style="width:110px;">Score</th>
+              <th style="width:110px;">Answered</th>
+            </tr>
+          </thead>
+          <tbody id="scoreboardBody"></tbody>
+        </table>
+
+        <div class="small footer-links" style="margin-top:10px;">
+          If you’re hosting, go to <a href="/host" target="_blank" rel="noopener">/host</a>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+  <script type="module">
+    import { qs, setText, toRoomCode, renderScoreboard } from '/shared.js';
+
+    const joinPanel = qs('#joinPanel');
+    const gamePanel = qs('#gamePanel');
+    const joinStatus = qs('#joinStatus');
+
+    const roomCodeInput = qs('#roomCode');
+    const playerNameInput = qs('#playerName');
+    const btnJoin = qs('#btnJoin');
+
+    const roomLabel = qs('#roomLabel');
+    const nameLabel = qs('#nameLabel');
+    const statusEl = qs('#status');
+    const qMetaEl = qs('#qMeta');
+    const qTextEl = qs('#qText');
+    const choicesEl = qs('#choices');
+    const scoreboardBody = qs('#scoreboardBody');
+
+    let roomCode = null;
+    let joined = false;
+    let answered = false;
+    let lastQuestion = null;
+
+    function setJoinStatus(text, cls){
+      joinStatus.className = 'status' + (cls ? ' ' + cls : '');
+      setText(joinStatus, text);
+    }
+
+    function setStatus(text, cls){
+      statusEl.className = 'status' + (cls ? ' ' + cls : '');
+      setText(statusEl, text);
+    }
+
+    function showJoin(){
+      joinPanel.style.display = '';
+      gamePanel.style.display = 'none';
+    }
+
+    function showGame(){
+      joinPanel.style.display = 'none';
+      gamePanel.style.display = '';
+    }
+
+    function renderChoices(question, correctIndex = null){
+      choicesEl.innerHTML = '';
+      if (!question) return;
+      const choices = question.choices ?? question.Choices ?? [];
+
+      for (let i = 0; i < choices.length; i++){
+        const b = document.createElement('button');
+        b.className = 'choice';
+        b.textContent = choices[i];
+
+        if (correctIndex !== null){
+          b.disabled = true;
+          if (i === correctIndex) b.classList.add('good');
+          else b.classList.add('bad');
+        } else {
+          b.disabled = !joined || answered;
+          b.addEventListener('click', async () => {
+            try {
+              if (answered) return;
+              setStatus('Answer submitted', 'warn');
+              const res = await connection.invoke('SubmitAnswer', roomCode, i);
+              if (!res?.ok){
+                setStatus(res?.error ?? 'Unable to submit', 'bad');
+                return;
+              }
+              answered = true;
+              setStatus('Locked in. Waiting for reveal…', 'warn');
+              renderChoices(lastQuestion, null);
+            } catch(e){
+              setStatus(String(e), 'bad');
+            }
+          });
+        }
+
+        choicesEl.appendChild(b);
+      }
+    }
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('/gameHub')
+      .withAutomaticReconnect()
+      .build();
+
+    connection.onreconnecting(() => setJoinStatus('Reconnecting…', 'warn'));
+    connection.onreconnected(() => setJoinStatus('Connected', 'good'));
+    connection.onclose(() => setJoinStatus('Disconnected', 'bad'));
+
+    connection.on('JoinedRoom', (code) => {
+      roomCode = code;
+      joined = true;
+      showGame();
+      setText(roomLabel, code);
+      setText(nameLabel, playerNameInput.value.trim());
+      setJoinStatus('Joined', 'good');
+      setStatus('Waiting for host…', 'warn');
+    });
+
+    connection.on('AnswerAccepted', () => {
+      answered = true;
+      setStatus('Locked in. Waiting for reveal…', 'warn');
+      renderChoices(lastQuestion, null);
+    });
+
+    connection.on('PlayerListUpdated', (scoreboard) => {
+      renderScoreboard(scoreboardBody, scoreboard);
+    });
+
+    connection.on('QuestionStarted', (q) => {
+      lastQuestion = q;
+      answered = false;
+      const qNum = q.questionNumber ?? q.QuestionNumber;
+      const total = q.totalQuestions ?? q.TotalQuestions;
+      const ttl = q.timeLimitSeconds ?? q.TimeLimitSeconds;
+      setText(qMetaEl, `Question ${qNum} / ${total}  •  ${ttl}s`);
+      setText(qTextEl, q.text ?? q.Text);
+      renderChoices(q, null);
+      setStatus('Choose an answer!', 'good');
+    });
+
+    connection.on('RoundEnded', (data) => {
+      const correct = data.correctIndex ?? data.CorrectIndex;
+      const sb = data.scoreboard ?? data.Scoreboard;
+      renderChoices(lastQuestion, correct);
+      renderScoreboard(scoreboardBody, sb);
+      setStatus('Round ended', 'warn');
+    });
+
+    connection.on('GameEnded', (data) => {
+      const sb = data.scoreboard ?? data.Scoreboard;
+      renderScoreboard(scoreboardBody, sb);
+      setText(qMetaEl, 'Game ended');
+      setText(qTextEl, 'Game over. You can re-join a new room.');
+      choicesEl.innerHTML = '';
+      setStatus('Done', 'good');
+      joined = false;
+      roomCode = null;
+      showJoin();
+    });
+
+    btnJoin.addEventListener('click', async () => {
+      const code = toRoomCode(roomCodeInput.value);
+      const name = (playerNameInput.value ?? '').trim();
+
+      if (!code){ setJoinStatus('Enter a room code', 'bad'); return; }
+      if (!name){ setJoinStatus('Enter a name', 'bad'); return; }
+
+      try {
+        setJoinStatus('Joining…', 'warn');
+        const res = await connection.invoke('JoinRoom', code, name);
+        if (!res?.ok){
+          setJoinStatus(res?.error ?? 'Unable to join', 'bad');
+          return;
+        }
+      } catch(e){
+        setJoinStatus(String(e), 'bad');
+      }
+    });
+
+    // If a room code is provided in the query string: /play?room=ABCD
+    const url = new URL(location.href);
+    const roomFromQuery = toRoomCode(url.searchParams.get('room'));
+    if (roomFromQuery){
+      roomCodeInput.value = roomFromQuery;
+    }
+
+    (async () => {
+      showJoin();
+      try {
+        await connection.start();
+        setJoinStatus('Connected. Join when ready.', 'good');
+      } catch(e){
+        setJoinStatus('Failed to connect: ' + e, 'bad');
+      }
+    })();
+  </script>
+</body>
+</html>
