@@ -1,0 +1,43 @@
+@page "/lesson/{Id:int}"
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private string title = "Lesson";
+    private MarkupString content = new("<p>Not found.</p>");
+
+    protected override void OnParametersSet()
+    {
+        // Simple static content store for demo; replace with a service or content files as needed.
+        switch (Id)
+        {
+            case 1:
+                title = "Introduction to Components";
+                content = (MarkupString)@"<h3>Components</h3>
+<p>Blazor components are .razor files. They accept parameters and can contain child content. Example:</p>
+<pre><code>&lt;MyComponent Title=&quot;Hi&quot; /&gt;</code></pre>";
+                break;
+            case 2:
+                title = "Event handling and binding";
+                content = (MarkupString)@"<h3>Events & Binding</h3>
+<p>Use @onclick and @bind for interactivity. Example: <code>&lt;button @onclick=&quot;DoIt&quot;&gt;Click&lt;/button&gt;</code></p>";
+                break;
+            case 3:
+                title = "Working with forms";
+                content = (MarkupString)@"<h3>Forms</h3><p>Use <code>EditForm</code>, <code>InputText</code>, and validation components.</p>";
+                break;
+            default:
+                title = "Lesson not found";
+                content = (MarkupString)"<p>The requested lesson does not exist.</p>";
+                break;
+        }
+    }
+}
+
+<PageTitle>@title</PageTitle>
+
+<h1>@title</h1>
+<div class="mb-3">@content</div>
+
+<a class="btn btn-outline-primary" href="lessons">Back to lessons</a>

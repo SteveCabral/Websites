@@ -1,0 +1,31 @@
+@page "/courses"
+
+<PageTitle>Courses</PageTitle>
+
+<h1>Courses</h1>
+
+<p>Courses are collections of lessons. These are simple examples you can extend.</p>
+
+@code {
+    private record Course(int Id, string Title, string Description);
+
+    private List<Course> courses = new()
+    {
+        new Course(1, "Blazor Basics", "Components, routing, and forms."),
+        new Course(2, "Web Fundamentals", "HTML, CSS, and accessibility basics."),
+        new Course(3, "C# for Web", "C# patterns commonly used in web apps.")
+    };
+}
+
+<div class="list-group">
+    @foreach (var c in courses)
+    {
+        <a class="list-group-item list-group-item-action" href="@($"courses/{c.Id}")">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">@c.Title</h5>
+            </div>
+            <p class="mb-1">@c.Description</p>
+            <small>Contains sample lessons</small>
+        </a>
+    }
+</div>

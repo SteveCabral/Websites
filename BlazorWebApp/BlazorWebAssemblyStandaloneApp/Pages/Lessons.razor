@@ -1,0 +1,30 @@
+@page "/lessons"
+
+<PageTitle>Lessons</PageTitle>
+
+<h1>Lessons</h1>
+
+<p>Short, focused lessons. Click one to open the full content.</p>
+
+@code {
+    private record Lesson(int Id, string Title, string Summary);
+
+    private List<Lesson> lessons = new()
+    {
+        new Lesson(1, "Introduction to Components", "Create components, parameters, and child content."),
+        new Lesson(2, "Event handling and binding", "Handle events and use two-way binding."),
+        new Lesson(3, "Working with forms", "Forms and validation in Blazor.")
+    };
+}
+
+<div class="list-group">
+    @foreach (var l in lessons)
+    {
+        <a class="list-group-item list-group-item-action" href="@($"lesson/{l.Id}")">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">@l.Title</h5>
+            </div>
+            <p class="mb-1">@l.Summary</p>
+        </a>
+    }
+</div>
